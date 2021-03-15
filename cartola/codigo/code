@@ -1,0 +1,272 @@
+# Instalando os pacotes
+install.packages("httr")
+install.packages("jsonlite")
+install.packages("dplyr")
+install.packages("reshape2")
+install.packages("ggplot2")
+install.packages("hrbrthemes")
+
+# Carregando os pacotes
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(heatmaply)
+library(hrbrthemes)
+
+# Inicializando variáveis
+base <- "https://api.cartolafc.globo.com/atletas/mercado"
+base2 <- "https://api.cartolafc.globo.com/mercado/destaques"
+base3 <- "https://api.cartolafc.globo.com/partidas"
+call <- paste(base)
+call2 <- paste(base2)
+call3 <- paste(base3)
+
+# Passando objetos para função GET de httr
+mercado <- GET(call)
+destaques <- GET(call2)
+partidas <- GET(call3)
+
+# Desserialização
+mercado2 <- content(mercado, "text")
+destaques2 <- content(destaques, "text")
+partidas2 <- content(partidas, "text")
+
+# Convertendo dados da API em formato JSON
+mercado_json <- fromJSON(mercado2, flatten = TRUE)
+destaques_json <- fromJSON(destaques2, flatten = TRUE)
+partidas_json <- fromJSON(partidas2, flatten = TRUE)
+
+# Convertendo o JSON em Data Frame
+mercado_df <- as.data.frame(mercado_json)
+destaques_df <- as.data.frame(destaques_json)
+partidas_df <- as.data.frame(partidas_json)
+
+### Tratamento dos Dados
+
+# Selecionando colunas que serão utilizadas do Dataset Mercado
+mercado_df2 <- mercado_df [,c("atletas.nome", "atletas.apelido", "atletas.atleta_id",
+                              "atletas.clube_id", "atletas.posicao_id", "atletas.status_id",
+                              "atletas.pontos_num", "atletas.preco_num", "atletas.variacao_num",
+                              "atletas.media_num", "atletas.jogos_num")]
+
+# Excluindo colunas que não serão necessárias do dataset Destaques
+destaques_df$escudo_clube <- NULL
+destaques_df$Atleta.foto <- NULL
+destaques_df$Atleta.preco_editorial <- NULL
+destaques_df$clube <- NULL
+destaques_df$posicao_abreviacao <- NULL
+
+# Criando dataframes Clubes, Status e Posição
+atletas.clube_id = c("293", "284", "373", "282", "264", "290", "354", "262", "277", "285", "275", "267", "292", "265", "266", "263", "356", "294", "276", "280")
+Clube = c("Athletico-PR", "Grêmio", "Atlético-GO", "Atlético-MG", "Corinthians", "Goiás", "Ceará", "Flamengo", "Santos", "Internacional", "Palmeiras", "Vasco", "Sport", "Bahia", "Fluminense", "Botafogo", "Fortaleza", "Coritiba", "São Paulo", "Bragantino")
+clubes_df = data.frame(atletas.clube_id, Clube)
+
+atletas.status_id = c("2", "3", "5", "6", "7")
+Status = c("Dúvida", "Suspenso", "Contundido", "Nulo", "Provável")
+status_df = data.frame(atletas.status_id, Status)
+
+atletas.posicao_id = c("1", "2", "3", "4", "5", "6")
+Posicao = c("Goleiro", "Lateral", "Zagueiro", "Meia", "Atacante", "Técnico")
+posicao_df = data.frame(atletas.posicao_id, Posicao)
+
+# Merge dos dataframes Clubes, Status, Posição e Mercado
+mercado_df3 = merge(mercado_df2, clubes_df, by.x=("atletas.clube_id"), by.y=("atletas.clube_id"))
+mercado_df4 = merge(mercado_df3, status_df, by.x=("atletas.status_id"), by.y=("atletas.status_id"))
+mercado_df5 = merge(mercado_df4, posicao_df, by.x=("atletas.posicao_id"), by.y=("atletas.posicao_id"))
+
+# Excluindo colunas com IDs
+mercado_df5$atletas.clube_id <- NULL
+mercado_df5$atletas.status_id <- NULL
+mercado_df5$atletas.posicao_id <- NULL
+
+# Renomeando e reorganizando colunas
+colnames(mercado_df5) = c("Nome_Atleta", "Apelido", "ID_Atleta", "Pontos", "Preço", "Variação",
+                          "Média", "Jogos", "Clube", "Status", "Posição")
+mercado_final = mercado_df5[c("ID_Atleta", "Nome_Atleta", "Apelido", "Posição", "Status", "Clube",
+                              "Pontos", "Preço", "Variação", "Média", "Jogos")]
+
+
+colnames(destaques_df) = c("Escalações", "Clube", "ID_Clube", "Posição", 
+                           "ID_Atleta", "Nome_Atleta", "Apelido")
+destaques_final <- destaques_df[c("ID_Atleta", "Nome_Atleta", "Apelido", 
+                                  "Posição", "Clube", "Escalações")]
+
+### Análise Exploratória
+
+# Verificando e alterando tipos dos dados
+str(mercado_final)
+str(destaques_final)
+
+mercado_final$ID_Atleta <- as.factor(mercado_final$ID_Atleta)
+mercado_final$Posição <- as.factor(mercado_final$Posição)
+mercado_final$Status <- as.factor(mercado_final$Status)
+mercado_final$Clube <- as.factor(mercado_final$Clube)
+
+destaques_final$ID_Atleta <- as.factor(destaques_final$ID_Atleta)
+destaques_final$Posição <- as.factor(destaques_final$Posição)
+destaques_final$Clube <- as.factor(destaques_final$Clube)
+
+## Visualização das principais estatísticas por Clube na Semana 37
+
+# Calculando soma das estatísticas Pontos, Variação, Preço e Média e salvando
+# em dataframes
+soma_pontos = tapply(mercado_final$Pontos, mercado_final$Clube, sum) 
+soma_var = tapply(mercado_final$Variação, mercado_final$Clube, sum) 
+soma_preco = tapply(mercado_final$Preço, mercado_final$Clube, sum) 
+soma_media = tapply(mercado_final$Média, mercado_final$Clube, sum) 
+
+soma_pontos_df = melt(soma_pontos)
+soma_var_df = melt(soma_var)
+soma_preco_df = melt(soma_preco)
+soma_media_df = melt(soma_media)
+
+# Alterando nomes das colunas
+colnames(soma_pontos_df) = c("Clube", "Pontos")
+colnames(soma_var_df) = c("Clube", "Variação")
+colnames(soma_preco_df) = c("Clube", "Preço")
+colnames(soma_media_df) = c("Clube", "Média")
+
+# Criando dataframe para merge das estatísticas 
+clubes_df_heatmap = clubes_df
+clubes_df_heatmap$Clube <- as.factor(clubes_df_heatmap$Clube)
+clubes_df_heatmap$atletas.clube_id <- NULL
+
+clubes_df_heatmap = merge(clubes_df_heatmap, soma_pontos_df, by.x=("Clube"), by.y=("Clube"))
+clubes_df_heatmap = merge(clubes_df_heatmap, soma_var_df, by.x=("Clube"), by.y=("Clube"))
+clubes_df_heatmap = merge(clubes_df_heatmap, soma_preco_df, by.x=("Clube"), by.y=("Clube"))
+clubes_df_heatmap = merge(clubes_df_heatmap, soma_media_df, by.x=("Clube"), by.y=("Clube"))
+
+rownames(clubes_df_heatmap) <- clubes_df_heatmap[,1]
+clubes_df_heatmap <- clubes_df_heatmap[,-1]
+
+# Normalizando os dados e plotando o heatmap
+clubes_df_heatmap_norm <- normalize(clubes_df_heatmap)
+
+heatmaply(clubes_df_heatmap_norm, grid_color = "white", colors = OrRd, 
+          Rowv = FALSE, Colv = FALSE, main = "Estatísticas da Semana 37")
+
+## Escalações dos Destaques por Clube
+ggplot(destaques_final, aes(x="", y=Escalações, fill=Clube)) +
+  geom_bar(stat="identity", width=1) +
+  theme(axis.line=element_blank(),axis.text.x=element_blank(),
+        axis.text.y=element_blank(),axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.title = element_blank(),
+        panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank()) +
+  labs(title = "Clubes com Maior Número de Escalações") +
+  scale_fill_brewer(palette="Spectral") +
+  coord_polar("y", start=0)
+
+## Escalações dos Destaques por Posição
+ggplot(destaques_final, aes(x="", y=Escalações, fill=Posição)) +
+  geom_bar(stat="identity", width=1) +
+  theme(axis.line=element_blank(),axis.text.x=element_blank(),
+        axis.text.y=element_blank(),axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.title = element_blank(),
+        panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank()) +
+  labs(title = "Escalações por Posição Dentre os 20 Destaques") +
+  geom_text(aes(y = ypos, label = Clube), color = "black", size=6)+
+  scale_fill_brewer(palette="Spectral") +
+  coord_polar("y", start=0)
+
+## Analisando Goleiros
+
+# Preparando o dataset
+goleiros_provaveis = filter(mercado_df, atletas.posicao_id == 1 & atletas.status_id == 7)
+goleiros_provaveis2 = goleiros_provaveis [,c("atletas.apelido", "atletas.clube_id",
+                                             "atletas.pontos_num", "atletas.preco_num", "atletas.variacao_num",
+                                             "atletas.media_num", "atletas.jogos_num", "atletas.scout.CA",
+                                             "atletas.scout.SG", "atletas.scout.DD", "atletas.scout.DP",
+                                             "atletas.scout.GS", "atletas.scout.CV")]
+
+str(goleiros_provaveis2)
+goleiros_provaveis2$atletas.clube_id <- as.factor(goleiros_provaveis2$atletas.clube_id)
+
+goleiros_final = merge(goleiros_provaveis2, clubes_df, by.x=("atletas.clube_id"), by.y=("atletas.clube_id"))
+goleiros_final$atletas.clube_id <- NULL
+
+colnames(goleiros_final) = c("Apelido", "Pontos", "Preço", "Variação", 
+                             "Média", "Jogos", "Cartão Amarelo", 
+                             "Jogos sem Sofrer Gols", "Defesa Difícil", 
+                             "Defesa de Pênalti", "Gols Sofridos", "Cartão Vermelho",
+                             "Clube")
+
+goleiros_final <- goleiros_final[c("Apelido", "Clube", "Pontos", "Preço", "Variação", 
+                                   "Média", "Jogos", "Cartão Amarelo", "Jogos sem Sofrer Gols",
+                                   "Defesa Difícil", "Defesa de Pênalti", "Gols Sofridos", 
+                                   "Cartão Vermelho")]
+
+goleiros_final[is.na(goleiros_final)] <- 0
+
+# Barplot da última pontuação e média
+cols = c("#FF6600", "#0000FF")
+par(mar=c(8,4,4,4))
+barplot(
+  t(goleiros_final[c('Pontos','Média')]),
+  beside=T,
+  col=cols,
+  names.arg=goleiros_final$Apelido,
+  ylim=c(-6,13),
+  main="Comparação entre Pontos na Semana 37 e Média do Campeonato",
+  las=2,
+  legend = TRUE,
+  args.legend = list(x = "topright", ncol = 2)
+    );
+box();
+
+## Analisando Atacantes
+
+# Preparando o dataset
+atacantes_provaveis = filter(mercado_df, atletas.posicao_id == 5 & atletas.status_id == 7)
+atacantes_provaveis2 = atacantes_provaveis [,c("atletas.apelido", "atletas.clube_id",
+                                               "atletas.pontos_num", "atletas.preco_num", "atletas.variacao_num",
+                                               "atletas.media_num", "atletas.jogos_num", "atletas.scout.A",
+                                               "atletas.scout.CA", "atletas.scout.DS", "atletas.scout.FC",
+                                               "atletas.scout.FD", "atletas.scout.FF", "atletas.scout.FS",
+                                               "atletas.scout.FT", "atletas.scout.G", "atletas.scout.I",
+                                               "atletas.scout.PI", "atletas.scout.CV", "atletas.scout.PP")]
+
+
+str(atacantes_provaveis2)
+atacantes_provaveis2$atletas.clube_id <- as.factor(atacantes_provaveis2$atletas.clube_id)
+
+atacantes_final = merge(atacantes_provaveis2, clubes_df, by.x=("atletas.clube_id"), by.y=("atletas.clube_id"))
+atacantes_final$atletas.clube_id <- NULL
+colnames(atacantes_final) = c("Apelido", "Pontos", "Preço", "Variação", 
+                                   "Média", "Jogos", "Assistência", "Cartão Amarelo", 
+                                   "Desarme", "Faltas Cometidas", "Finalização Defendida", 
+                                   "Finalização pra Fora", "Falta Sofrida", "Finalização na Trave",
+                                   "Gol", "Impedimento", "Passe Incompleto", "Cartão Vermelho", 
+                                    "Pênalti Perdido", "Clube")
+
+atacantes_final <- atacantes_final[c("Apelido", "Clube", "Pontos", "Preço", "Variação", 
+                                     "Média", "Jogos", "Assistência", "Cartão Amarelo", 
+                                     "Desarme", "Faltas Cometidas", "Finalização Defendida", 
+                                     "Finalização pra Fora", "Falta Sofrida", "Finalização na Trave",
+                                     "Gol", "Impedimento", "Passe Incompleto", "Cartão Vermelho", 
+                                     "Pênalti Perdido")]
+
+atacantes_final[is.na(atacantes_final)] <- 0
+
+# Verificando se quanto maior o preço, maior a média e quantidade de gols
+ggplot(atacantes_final, aes(Preço, Média)) + 
+  geom_point(size=6, colour = "blue") +
+  labs(title = "Relação entre Média x Preço") +
+  theme_ipsum()
+
+ggplot(atacantes_final, aes(Preço, Gol)) + 
+  geom_point(size=6, colour = "orange") +
+  labs(title = "Relação entre Gols x Preço") +
+  theme_ipsum()
+
+# Selecionando Jogadores com média maior que 4 para analisar
+
+atacantes_maiores_medias = filter(atacantes_final, Média >= 4)
+atacantes_maiores_medias = atacantes_maiores_medias[c("Apelido", "Clube", "Pontos", "Preço", 
+                                                      "Variação", "Média", "Jogos", "Gol", 
+                                                      "Assistência", "Finalização Defendida")]
